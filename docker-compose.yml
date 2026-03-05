@@ -1,0 +1,51 @@
+version: "3.8"
+
+services:
+  # ─── Zookeeper (required by Kafka) ───
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: fleet_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - fleet_net
+
+  # ─── Kafka ───
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: fleet_kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - fleet_net
+
+  # ─── QuestDB (time-series database) ───
+  questdb:
+    image: questdb/questdb:7.3.10
+    container_name: fleet_questdb
+    ports:
+      - "9000:9000"   # Web console
+      - "9009:9009"   # InfluxDB line protocol (fast ingest)
+      - "8812:8812"   # PostgreSQL wire protocol
+    volumes:
+      - questdb_data:/var/lib/questdb
+    networks:
+      - fleet_net
+
+networks:
+  fleet_net:
+    driver: bridge
+
+volumes:
+  questdb_data:

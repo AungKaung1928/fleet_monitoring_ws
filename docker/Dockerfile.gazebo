@@ -1,0 +1,27 @@
+# ─── Dockerfile: Containerized Gazebo + TurtleBot3 Simulation ───
+#
+# This is OPTIONAL. For getting started, run Gazebo natively.
+# Use this when you want to demonstrate full Docker containerization.
+#
+# Build:  docker build -f docker/Dockerfile.gazebo -t fleet-gazebo .
+# Run:    docker run --rm -it --net=host --env DISPLAY=$DISPLAY \
+#           -v /tmp/.X11-unix:/tmp/.X11-unix fleet-gazebo
+
+FROM osrf/ros:humble-desktop
+
+# Install TurtleBot3
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-turtlebot3-gazebo \
+    ros-humble-turtlebot3-teleop \
+    ros-humble-gazebo-ros \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV TURTLEBOT3_MODEL=burger
+
+# Copy launch file
+COPY launch/multi_robot.launch.py /ros2_ws/launch/
+
+# Entry: source ROS2 and launch
+ENTRYPOINT ["/bin/bash", "-c", \
+    "source /opt/ros/humble/setup.bash && \
+     ros2 launch /ros2_ws/launch/multi_robot.launch.py"]

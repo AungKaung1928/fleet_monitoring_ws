@@ -1,0 +1,21 @@
+{
+    // Zenoh-to-ROS2 bridge configuration
+    // Bridges /tb1/odom and /tb2/odom topics to Zenoh
+
+    // Listen on default Zenoh port
+    "mode": "peer",
+    "connect": { "endpoints": [] },
+    "listen": { "endpoints": ["tcp/0.0.0.0:7447"] },
+
+    // ROS2 subscriber config — which topics to bridge
+    "ros2dds": {
+        // Only bridge these specific topics (whitelist)
+        "allow": {
+            "publishers": [],
+            "subscribers": [
+                "/tb1/odom",
+                "/tb2/odom"
+            ]
+        }
+    }
+}

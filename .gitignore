@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Docker volumes (local data)
+questdb_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
