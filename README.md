@@ -52,7 +52,7 @@ Specifically: containerized infrastructure with Docker Compose, message brokerin
 ## Setup
 
 ```bash
-git clone git@github.com:AungKaung1928/fleet-monitoring-system.git
+git clone git@github.com:your_user_name/fleet-monitoring-system.git
 cd fleet-monitoring-system
 pip3 install kafka-python eclipse-zenoh requests psycopg2-binary
 chmod +x scripts/*.sh
