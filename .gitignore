@@ -1,19 +1,41 @@
+```python
 # Python
 __pycache__/
 *.pyc
-*.egg-info/
-.venv/
+*.pyo
+*.pyd
+.Python
+env/
 venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# ROS2 build artifacts
+# Generated / Build artifacts
+dist/
 build/
-install/
-log/
+*.egg-info/
 
-# Docker volumes (local data)
-questdb_data/
+# Environment
+.env
+.env.local
+*.env.*
 
-# IDE
+# Editors
 .vscode/
 .idea/
 *.swp
+*.swo
+*.tmp
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+```
