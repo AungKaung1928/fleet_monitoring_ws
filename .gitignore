@@ -1,19 +1,46 @@
-# Python
-__pycache__/
+```
+# Compiled and build artifacts
 *.pyc
-*.egg-info/
+__pycache__/
+
+# Dependencies
 .venv/
 venv/
+node_modules/
 
-# ROS2 build artifacts
-build/
-install/
-log/
+# Logs and temp files
+*.log
+*.tmp
+*.swp
 
-# Docker volumes (local data)
-questdb_data/
+# Environment
+.env
+.env.local
+.env.*
 
-# IDE
+# Editors
 .vscode/
 .idea/
-*.swp
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.Python
+*.pot
+
+# Backup files
+*~
+*.bak
+*.orig
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

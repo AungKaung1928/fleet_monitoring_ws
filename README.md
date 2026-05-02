@@ -36,9 +36,18 @@ Distributed multi-robot monitoring infrastructure built with ROS2, Kafka, QuestD
 
 ## What This Demonstrates
 
-**Distributed robotics infrastructure** — not a single-robot tutorial. This project shows how production robot fleets move data from sensors through message brokers into queryable databases.
+**Distributed robotics infrastructure with Physical AI capabilities** — not a single-robot tutorial. This project shows how production robot fleets move data from sensors through message brokers into queryable databases, with real-time AI-powered health monitoring and perception.
 
-Specifically: containerized infrastructure with Docker Compose, message brokering with Apache Kafka, time-series storage and SQL queries with QuestDB, multi-robot simulation with namespaced ROS2 topics, and a monitoring pipeline that could scale to N robots without code changes.
+Specifically: containerized infrastructure with Docker Compose, message brokering with Apache Kafka, time-series storage and SQL queries with QuestDB, multi-robot simulation with namespaced ROS2 topics, **anomaly detection for fleet health monitoring**, **edge AI perception for obstacle detection**, and a monitoring pipeline that could scale to N robots without code changes.
+
+### 🎯 Physical AI Career Value
+
+This project demonstrates skills employers seek in physical AI roles:
+- **Edge AI Deployment**: Real-time sensor processing with simulated computer vision
+- **Fleet Health Monitoring**: Statistical anomaly detection for safety-critical systems  
+- **Production Data Pipelines**: Kafka-based architecture used in warehouse/logistics robots
+- **Multi-Robot Coordination**: Scalable infrastructure for 10s to 100s of robots
+- **Safety Systems**: Stuck detection, collision avoidance patterns, alerting mechanisms
 
 ## Prerequisites
 
@@ -86,12 +95,23 @@ python3 pipeline/kafka_producer.py
 python3 pipeline/kafka_consumer.py
 ```
 
-**Terminal 5 — Start dashboard:**
+**Terminal 5 (Optional) — Start anomaly detector:**
+```bash
+python3 pipeline/anomaly_detector.py
+```
+
+**Terminal 6 (Optional) — Start edge AI perception:**
+```bash
+source /opt/ros/humble/setup.bash
+python3 pipeline/edge_ai_perception.py
+```
+
+**Terminal 7 — Start dashboard:**
 ```bash
 python3 dashboard/monitor.py
 ```
 
-**Terminal 6 (optional) — Drive the robots:**
+**Terminal 8 (optional) — Drive the robots:**
 ```bash
 source /opt/ros/humble/setup.bash
 # Auto-drive both in circles
@@ -139,6 +159,8 @@ fleet-monitoring-system/
 ├── pipeline/
 │   ├── kafka_producer.py         # ROS2 odom → Kafka
 │   ├── kafka_consumer.py         # Kafka → QuestDB (ILP protocol)
+│   ├── anomaly_detector.py       # Real-time fleet health monitoring (NEW)
+│   ├── edge_ai_perception.py     # Simulated AI obstacle detection (NEW)
 │   └── requirements.txt
 ├── dashboard/
 │   ├── monitor.py                # Terminal dashboard (queries QuestDB)
@@ -157,6 +179,10 @@ fleet-monitoring-system/
 **kafka_producer.py** — A ROS2 node that subscribes to `/tb1/odom` and `/tb2/odom` using rclpy. Each odometry message is serialized to JSON (position, orientation, velocity, timestamp) and sent to the Kafka topic `robot_odom`. Retry logic handles Kafka broker startup delay.
 
 **kafka_consumer.py** — Reads from the `robot_odom` Kafka topic and writes each record to QuestDB using InfluxDB Line Protocol (ILP) over TCP port 9009. ILP is QuestDB's fastest ingest method. The table `robot_odom` is auto-created on first write.
+
+**anomaly_detector.py** — Real-time fleet health monitoring service. Subscribes to Kafka odometry stream, tracks robot positions/velocities with sliding windows, detects stuck robots (no movement >10s), identifies erratic velocity patterns using statistical analysis, and generates health scores. Alerts are published to console and optionally saved to QuestDB for historical analysis. Demonstrates production safety monitoring patterns.
+
+**edge_ai_perception.py** — Simulated edge AI perception pipeline. Subscribes to LiDAR scans from `/tb1/scan` and `/tb2/scan`, runs simulated computer vision inference (obstacle classification, confidence scoring), and publishes detections to Kafka topic `ai_detections`. Shows how to integrate ML models (YOLO, semantic segmentation) into fleet systems for collision avoidance and navigation. In production, replace simulation with TensorRT/ONNX models running on Jetson or Coral TPU.
 
 **monitor.py** — Connects to QuestDB via PostgreSQL wire protocol (port 8812) and runs SQL queries every 2 seconds. Displays latest positions, velocities, and aggregate statistics per robot.
 
@@ -189,6 +215,14 @@ Use `docker/Dockerfile.gazebo` as a starting point to run the entire simulation 
 ### Add Anomaly Detection
 
 Write a Python script that queries QuestDB for velocity patterns. If a robot's velocity drops to zero for more than 10 seconds while it should be moving, flag it as stuck. This is a basic fleet health monitor.
+
+**Run:** `python3 pipeline/anomaly_detector.py` — Real-time statistical anomaly detection for stuck robots, erratic movement, and velocity anomalies with health scoring.
+
+### Add Edge AI Perception
+
+Demonstrate computer vision integration with simulated obstacle detection from LiDAR data.
+
+**Run:** `python3 pipeline/edge_ai_perception.py` — Processes LiDAR scans through an AI pipeline (simulated YOLO/classification) and publishes detections to Kafka for fleet coordination.
 
 ## Tech Stack
 
