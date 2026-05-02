@@ -1,5 +1,3 @@
-$ cat /workspace/pipeline/anomaly_detector.py
-cat /workspace/pipeline/anomaly_detector.py
 #!/usr/bin/env python3
 """
 Anomaly Detector — Reads robot odometry from Kafka, detects stuck robots,
