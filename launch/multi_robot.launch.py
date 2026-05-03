@@ -1,110 +1,77 @@
 """
-Launch 2 TurtleBot3 robots in Gazebo Classic with namespaced topics.
+Launch 2 TurtleBot3 robots in Gazebo Harmonic (gz-sim8) with namespaced topics.
 
-Robot 1: namespace=tb1, spawned at (0, 1)
-Robot 2: namespace=tb2, spawned at (0, -1)
+Robot 1 (tb1): orange, spawned at (0, 1) — drive with /tb1/cmd_vel
+Robot 2 (tb2): blue,   spawned at (0, -1) — left idle to trigger STUCK alerts
 """
 
 import os
+
 from launch import LaunchDescription
-from launch.actions import (
-    DeclareLaunchArgument,
-    IncludeLaunchDescription,
-    GroupAction,
-    ExecuteProcess,
-    TimerAction,
-)
+from launch.actions import IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import PushRosNamespace, Node
-from ament_index_python.packages import get_package_share_directory
+from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    # Paths
-    gazebo_ros_pkg = get_package_share_directory("gazebo_ros")
-    tb3_pkg = get_package_share_directory("turtlebot3_gazebo")
+    ws_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    world_file = os.path.join(ws_dir, "worlds", "fleet.sdf")
 
-    # Use empty world
-    world_file = os.path.join(tb3_pkg, "worlds", "empty_world.world")
-
-    # TurtleBot3 model
-    tb3_model = os.environ.get("TURTLEBOT3_MODEL", "burger")
-    urdf_path = os.path.join(
-        get_package_share_directory("turtlebot3_gazebo"),
-        "models",
-        f"turtlebot3_{tb3_model}",
-        "model.sdf",
+    gz_sim = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            FindPackageShare("ros_gz_sim"), "/launch/gz_sim.launch.py"
+        ]),
+        launch_arguments={
+            "gz_args": f"-r {world_file}",
+            "gz_version": "8",
+            "on_exit_shutdown": "true",
+        }.items(),
     )
 
-    # ─── Launch Gazebo server + client ───
-    gazebo = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(gazebo_ros_pkg, "launch", "gazebo.launch.py")
-        ),
-        launch_arguments={"world": world_file}.items(),
-    )
-
-    # ─── Spawn Robot 1 ───
-    spawn_tb1 = Node(
-        package="gazebo_ros",
-        executable="spawn_entity.py",
+    bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
         arguments=[
-            "-entity", "tb1",
-            "-file", urdf_path,
-            "-x", "0.0",
-            "-y", "1.0",
-            "-z", "0.01",
-            "-robot_namespace", "tb1",
+            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+            "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
+            "/tb1/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
+            "/tb2/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
+            "/tb1/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
+            "/tb2/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
         ],
         output="screen",
     )
 
-    # ─── Spawn Robot 2 ───
-    spawn_tb2 = Node(
-        package="gazebo_ros",
-        executable="spawn_entity.py",
-        arguments=[
-            "-entity", "tb2",
-            "-file", urdf_path,
-            "-x", "0.0",
-            "-y", "-1.0",
-            "-z", "0.01",
-            "-robot_namespace", "tb2",
-        ],
-        output="screen",
-    )
-
-    # ─── Robot State Publishers (one per robot) ───
-    # Each robot needs its own robot_state_publisher with namespace
-    rsp_tb1 = GroupAction(
-        actions=[
-            PushRosNamespace("tb1"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(tb3_pkg, "launch", "robot_state_publisher.launch.py")
-                ),
-                launch_arguments={"use_sim_time": "true"}.items(),
-            ),
-        ]
-    )
-
-    rsp_tb2 = GroupAction(
-        actions=[
-            PushRosNamespace("tb2"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(tb3_pkg, "launch", "robot_state_publisher.launch.py")
-                ),
-                launch_arguments={"use_sim_time": "true"}.items(),
-            ),
-        ]
-    )
-
-    return LaunchDescription([
-        gazebo,
-        rsp_tb1,
-        rsp_tb2,
-        TimerAction(period=5.0, actions=[spawn_tb1]),
-        TimerAction(period=6.0, actions=[spawn_tb2]),
+    tb3_urdf = PathJoinSubstitution([
+        FindPackageShare("turtlebot3_description"), "urdf", "turtlebot3_burger.urdf"
     ])
+
+    rsp_tb1 = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher_tb1",
+        parameters=[{
+            "robot_description": Command([
+                FindExecutable(name="xacro"), " ", tb3_urdf, " namespace:=tb1/",
+            ]),
+            "use_sim_time": True,
+        }],
+        remappings=[("/joint_states", "/tb1/joint_states")],
+    )
+
+    rsp_tb2 = Node(
+        package="robot_state_publisher",
+        executable="robot_state_publisher",
+        name="robot_state_publisher_tb2",
+        parameters=[{
+            "robot_description": Command([
+                FindExecutable(name="xacro"), " ", tb3_urdf, " namespace:=tb2/",
+            ]),
+            "use_sim_time": True,
+        }],
+        remappings=[("/joint_states", "/tb2/joint_states")],
+    )
+
+    return LaunchDescription([gz_sim, bridge, rsp_tb1, rsp_tb2])
