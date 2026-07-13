@@ -1,16 +1,19 @@
-"""
-Launch 2 TurtleBot3 robots in Gazebo Harmonic (gz-sim8) with namespaced topics.
+"""Launch the fleet defined in config/fleet.yaml in Gazebo Harmonic (gz-sim8).
 
-Robot 1 (tb1): orange, spawned at (0, 1) — drive with /tb1/cmd_vel
-Robot 2 (tb2): blue,   spawned at (0, -1) — left idle to trigger STUCK alerts
+Per robot: gz↔ROS2 bridge entries (odom, cmd_vel, joint_states), a
+robot_state_publisher with frame_prefix so TF trees never collide, and a
+static transform world→<robot>/odom at the spawn pose so every robot renders
+in one RViz view. Pass rviz:=true to open RViz with the generated config.
 """
 
 import os
 
+import yaml
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -18,6 +21,13 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     ws_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     world_file = os.path.join(ws_dir, "worlds", "fleet.sdf")
+    rviz_config = os.path.join(ws_dir, "config", "fleet.rviz")
+
+    with open(os.path.join(ws_dir, "config", "fleet.yaml")) as f:
+        robots = yaml.safe_load(f)["robots"]
+
+    rviz_arg = DeclareLaunchArgument("rviz", default_value="false",
+                                     description="Open RViz with the generated fleet config")
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -30,17 +40,22 @@ def generate_launch_description():
         }.items(),
     )
 
+    bridge_args = [
+        "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+        "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
+    ]
+    for r in robots:
+        rid = r["id"]
+        bridge_args += [
+            f"/{rid}/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
+            f"/{rid}/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
+            f"/{rid}/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model",
+        ]
+
     bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
-        arguments=[
-            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
-            "/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V",
-            "/tb1/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
-            "/tb2/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry",
-            "/tb1/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
-            "/tb2/cmd_vel@geometry_msgs/msg/Twist]gz.msgs.Twist",
-        ],
+        arguments=bridge_args,
         output="screen",
     )
 
@@ -48,30 +63,42 @@ def generate_launch_description():
         FindPackageShare("turtlebot3_description"), "urdf", "turtlebot3_burger.urdf"
     ])
 
-    rsp_tb1 = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        name="robot_state_publisher_tb1",
-        parameters=[{
-            "robot_description": Command([
-                FindExecutable(name="xacro"), " ", tb3_urdf, " namespace:=tb1/",
-            ]),
-            "use_sim_time": True,
-        }],
-        remappings=[("/joint_states", "/tb1/joint_states")],
+    nodes = []
+    for r in robots:
+        rid = r["id"]
+        spawn = r["spawn"]
+        nodes.append(Node(
+            package="robot_state_publisher",
+            executable="robot_state_publisher",
+            name=f"robot_state_publisher_{rid}",
+            parameters=[{
+                "robot_description": Command([FindExecutable(name="xacro"), " ", tb3_urdf]),
+                "frame_prefix": f"{rid}/",
+                "use_sim_time": True,
+            }],
+            remappings=[
+                ("/joint_states", f"/{rid}/joint_states"),
+                ("/robot_description", f"/{rid}/robot_description"),
+            ],
+        ))
+        nodes.append(Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name=f"world_to_{rid}_odom",
+            arguments=[
+                "--x", str(spawn["x"]), "--y", str(spawn["y"]), "--z", "0",
+                "--yaw", str(spawn.get("yaw", 0.0)),
+                "--frame-id", "world", "--child-frame-id", f"{rid}/odom",
+            ],
+        ))
+
+    rviz = Node(
+        package="rviz2",
+        executable="rviz2",
+        arguments=["-d", rviz_config],
+        parameters=[{"use_sim_time": True}],
+        condition=IfCondition(LaunchConfiguration("rviz")),
+        output="screen",
     )
 
-    rsp_tb2 = Node(
-        package="robot_state_publisher",
-        executable="robot_state_publisher",
-        name="robot_state_publisher_tb2",
-        parameters=[{
-            "robot_description": Command([
-                FindExecutable(name="xacro"), " ", tb3_urdf, " namespace:=tb2/",
-            ]),
-            "use_sim_time": True,
-        }],
-        remappings=[("/joint_states", "/tb2/joint_states")],
-    )
-
-    return LaunchDescription([gz_sim, bridge, rsp_tb1, rsp_tb2])
+    return LaunchDescription([rviz_arg, gz_sim, bridge, *nodes, rviz])

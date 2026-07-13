@@ -1,0 +1,166 @@
+{
+  "uid": "fleet-overview",
+  "title": "Fleet Overview",
+  "tags": ["fleet", "robots"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Odometry records",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count() AS records FROM robot_odom;"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Open alerts",
+      "datasource": {"type": "postgres", "uid": "fleetpg"},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS open_alerts FROM alerts WHERE status = 'open';"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"},
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Robots registered",
+      "datasource": {"type": "postgres", "uid": "fleetpg"},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT count(*) AS robots FROM robots;"
+        }
+      ],
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value"}
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Ingest rate (msgs / 5s)",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 4, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT timestamp AS time, count() AS msgs FROM robot_odom WHERE $__timeFilter(timestamp) SAMPLE BY 5s;"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Position X by robot",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT timestamp AS time, robot_id AS metric, pos_x AS value FROM robot_odom WHERE $__timeFilter(timestamp) ORDER BY timestamp;"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Position Y by robot",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT timestamp AS time, robot_id AS metric, pos_y AS value FROM robot_odom WHERE $__timeFilter(timestamp) ORDER BY timestamp;"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Linear velocity by robot",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawSql": "SELECT timestamp AS time, robot_id AS metric, vel_x AS value FROM robot_odom WHERE $__timeFilter(timestamp) ORDER BY timestamp;"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Alerts (lifecycle from Postgres)",
+      "datasource": {"type": "postgres", "uid": "fleetpg"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT id, robot_id, alert_type, severity, status, created_at, resolved_at FROM alerts ORDER BY created_at DESC LIMIT 50;"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Robot registry",
+      "datasource": {"type": "postgres", "uid": "fleetpg"},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 20},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT robot_id, model, first_seen, last_seen, (now() - last_seen < interval '10 seconds') AS online FROM robots ORDER BY robot_id;"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Latest positions",
+      "datasource": {"type": "postgres", "uid": "questdb"},
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 20},
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawSql": "SELECT robot_id, pos_x, pos_y, vel_x, ang_vel_z, timestamp FROM robot_odom LATEST ON timestamp PARTITION BY robot_id;"
+        }
+      ]
+    }
+  ]
+}

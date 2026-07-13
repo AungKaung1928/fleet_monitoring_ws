@@ -1,0 +1,46 @@
+# Fleet configuration — single source of truth.
+# Consumed by: scripts/generate_fleet.py (world + rviz), launch/multi_robot.launch.py,
+# pipeline/* (topics, endpoints, detector params), scripts/drive_fleet.py, scripts/fleet_cli.py.
+#
+# After editing robots, regenerate world + rviz:  make world
+
+robots:
+  - id: tb1
+    model: turtlebot3_burger
+    color: "0.9 0.5 0.0 1"          # orange
+    spawn: {x: 0.0, y: 1.0, yaw: 0.0}
+    drive: {linear: 0.15, angular: 0.3}   # circle
+  - id: tb2
+    model: turtlebot3_burger
+    color: "0.0 0.4 0.9 1"          # blue
+    spawn: {x: 0.0, y: -1.0, yaw: 0.0}
+    drive: null                      # idle → triggers STUCK alert
+  - id: tb3
+    model: turtlebot3_burger
+    color: "0.1 0.8 0.2 1"          # green
+    spawn: {x: 0.0, y: 3.0, yaw: 1.57}
+    drive: {linear: 0.1, angular: -0.5}   # opposite circle
+
+kafka:
+  bootstrap: "localhost:9092"        # override: KAFKA_BOOTSTRAP
+  odom_topic: robot_odom
+  dlq_topic: robot_odom_dlq
+
+questdb:
+  host: localhost                    # override: QUESTDB_HOST
+  ilp_port: 9009                     # override: QUESTDB_ILP_PORT
+  http_port: 9000
+
+postgres:                            # override: PG_HOST / PG_PORT / PG_USER / PG_PASSWORD / PG_DATABASE
+  host: localhost
+  port: 5432
+  user: fleet
+  password: fleet
+  database: fleet
+
+detector:
+  window_size: 10                    # samples in sliding window
+  stuck_variance_threshold: 0.001    # m^2, x_var + y_var below this = stuck
+  min_samples: 5
+
+drive_rate_hz: 10.0

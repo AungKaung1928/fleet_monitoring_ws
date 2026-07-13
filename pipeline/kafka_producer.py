@@ -1,67 +1,35 @@
 #!/usr/bin/env python3
-"""
-Kafka Producer — Reads robot odometry from ROS2 via rclpy, publishes to Kafka.
-
-Why not Zenoh here? Keeping it simple for v1. We use rclpy directly to subscribe
-to /tb1/odom and /tb2/odom, then forward to Kafka. The Zenoh bridge is demonstrated
-separately via the bridge config (bridging ROS2 DDS ↔ Zenoh network).
-
-Flow: ROS2 /tb*/odom → this script → Kafka topic "robot_odom"
-"""
-
-import json
-import time
-import threading
+"""ROS2 → Kafka bridge: subscribes to every /<robot>/odom in config/fleet.yaml,
+serialises to JSON, publishes to the Kafka odom topic."""
 from datetime import datetime, timezone
 
 import rclpy
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from nav_msgs.msg import Odometry
-from kafka import KafkaProducer
-from kafka.errors import NoBrokersAvailable
+
+from common import connect_kafka_producer, get_logger, kafka_bootstrap, load_config
 
 
 class OdomToKafka(Node):
-    """ROS2 node that subscribes to odometry topics and forwards to Kafka."""
-
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("odom_to_kafka")
+        cfg = load_config()
+        self.topic: str = cfg["kafka"]["odom_topic"]
+        self.producer = connect_kafka_producer(kafka_bootstrap(cfg), get_logger("kafka"))
 
-        # ─── Connect to Kafka (retry until broker is ready) ───
-        self.producer = self._connect_kafka()
-
-        # ─── QoS: best effort to match Gazebo odom publisher ───
         qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-
-        # ─── Subscribe to both robots ───
-        self.create_subscription(Odometry, "/tb1/odom", self._make_callback("tb1"), qos)
-        self.create_subscription(Odometry, "/tb2/odom", self._make_callback("tb2"), qos)
+        robot_ids = [r["id"] for r in cfg["robots"]]
+        for rid in robot_ids:
+            self.create_subscription(Odometry, f"/{rid}/odom", self._make_callback(rid), qos)
 
         self.msg_count = 0
-        self.get_logger().info("OdomToKafka started. Listening on /tb1/odom, /tb2/odom")
-
-    def _connect_kafka(self, retries: int = 30, delay: float = 2.0) -> KafkaProducer:
-        """Retry connecting to Kafka until broker is available."""
-        for attempt in range(retries):
-            try:
-                producer = KafkaProducer(
-                    bootstrap_servers=["localhost:9092"],
-                    value_serializer=lambda v: json.dumps(v).encode("utf-8"),
-                )
-                self.get_logger().info("Connected to Kafka broker.")
-                return producer
-            except NoBrokersAvailable:
-                self.get_logger().warn(
-                    f"Kafka not ready (attempt {attempt+1}/{retries}), retrying in {delay}s..."
-                )
-                time.sleep(delay)
-        raise RuntimeError("Could not connect to Kafka after retries.")
+        self.get_logger().info(
+            f"OdomToKafka started. Robots: {', '.join(robot_ids)} → Kafka '{self.topic}'"
+        )
 
     def _make_callback(self, robot_id: str):
-        """Create a callback closure for a specific robot."""
-
-        def callback(msg: Odometry):
+        def callback(msg: Odometry) -> None:
             data = {
                 "robot_id": robot_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -82,24 +50,20 @@ class OdomToKafka(Node):
                 },
                 "angular_velocity_z": round(msg.twist.twist.angular.z, 4),
             }
-
-            self.producer.send("robot_odom", value=data)
+            self.producer.send(self.topic, value=data)
             self.msg_count += 1
-
-            if self.msg_count % 50 == 0:
-                self.get_logger().info(
-                    f"[{robot_id}] Published {self.msg_count} messages to Kafka"
-                )
+            if self.msg_count % 100 == 0:
+                self.get_logger().info(f"Published {self.msg_count} messages to Kafka")
 
         return callback
 
-    def destroy_node(self):
+    def destroy_node(self) -> None:
         self.producer.flush()
         self.producer.close()
         super().destroy_node()
 
 
-def main():
+def main() -> None:
     rclpy.init()
     node = OdomToKafka()
     try:

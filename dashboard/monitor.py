@@ -50,7 +50,7 @@ def get_latest_positions(cursor) -> list:
     try:
         cursor.execute(query)
         return cursor.fetchall()
-    except psycopg2.Error as e:
+    except psycopg2.Error:
         # Table might not exist yet if no data has been written
         return []
 

@@ -17,3 +17,6 @@ questdb_data/
 .vscode/
 .idea/
 *.swp
+
+# Secrets / local overrides
+.env

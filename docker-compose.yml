@@ -1,45 +1,98 @@
-version: "3.8"
-
 services:
-  # ─── Zookeeper (required by Kafka) ───
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: fleet_zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    ports:
-      - "2181:2181"
-    networks:
-      - fleet_net
-
-  # ─── Kafka ───
+  # ─── Kafka (KRaft mode — no Zookeeper) ───
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: fleet_kafka
-    depends_on:
-      - zookeeper
+    restart: unless-stopped
     ports:
-      - "9092:9092"
+      - "${KAFKA_PORT:-9092}:9092"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
     networks:
       - fleet_net
 
-  # ─── QuestDB (time-series database) ───
+  # ─── QuestDB (time-series telemetry: robot_odom, robot_alerts) ───
   questdb:
     image: questdb/questdb:7.3.10
     container_name: fleet_questdb
+    restart: unless-stopped
     ports:
-      - "9000:9000"   # Web console
-      - "9009:9009"   # InfluxDB line protocol (fast ingest)
-      - "8812:8812"   # PostgreSQL wire protocol
+      - "${QUESTDB_HTTP_PORT:-9000}:9000"   # Web console + /exec HTTP API
+      - "${QUESTDB_ILP_PORT:-9009}:9009"    # InfluxDB line protocol (fast ingest)
+      - "${QUESTDB_PG_PORT:-8812}:8812"     # PostgreSQL wire protocol (Grafana reads)
     volumes:
       - questdb_data:/var/lib/questdb
+    networks:
+      - fleet_net
+
+  # ─── PostgreSQL (fleet state: robot registry + alert lifecycle) ───
+  postgres:
+    image: postgres:16-alpine
+    container_name: fleet_postgres
+    restart: unless-stopped
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${PG_USER:-fleet}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-fleet}
+      POSTGRES_DB: ${PG_DATABASE:-fleet}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-fleet} -d ${PG_DATABASE:-fleet}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - fleet_net
+
+  # ─── Grafana (dashboards-as-code, provisioned from docker/grafana/) ───
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: fleet_grafana
+    restart: unless-stopped
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-fleet}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      questdb:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
     networks:
       - fleet_net
 
@@ -49,3 +102,5 @@ networks:
 
 volumes:
   questdb_data:
+  postgres_data:
+  grafana_data:
